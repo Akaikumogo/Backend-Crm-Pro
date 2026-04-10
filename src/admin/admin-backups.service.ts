@@ -11,6 +11,16 @@ import { execFile } from 'node:child_process';
 import { createReadStream } from 'node:fs';
 import { mkdir, readdir, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { Apartment } from '../entities/apartment.entity';
+import { Block } from '../entities/block.entity';
+import { Branch } from '../entities/branch.entity';
+import { Client } from '../entities/client.entity';
+import { Contract } from '../entities/contract.entity';
+import { Floor } from '../entities/floor.entity';
+import { OrganizationPayment } from '../entities/organization-payment.entity';
+import { Organization } from '../entities/organization.entity';
+import { SuperadminNotification } from '../entities/superadmin-notification.entity';
+import { User } from '../entities/user.entity';
 
 type JsonBackupV1 = {
   v: 1;
@@ -60,20 +70,24 @@ export class AdminBackupsService {
 
   private async createJsonBackup(): Promise<JsonBackupV1> {
     const tables: JsonBackupV1['tables'] = {
-      organizations: await this.dataSource.query('SELECT * FROM organizations'),
-      branches: await this.dataSource.query('SELECT * FROM branches'),
-      users: await this.dataSource.query('SELECT * FROM users'),
-      blocks: await this.dataSource.query('SELECT * FROM blocks'),
-      floors: await this.dataSource.query('SELECT * FROM floors'),
-      apartments: await this.dataSource.query('SELECT * FROM apartments'),
-      clients: await this.dataSource.query('SELECT * FROM clients'),
-      contracts: await this.dataSource.query('SELECT * FROM contracts'),
-      organization_payments: await this.dataSource.query(
-        'SELECT * FROM organization_payments',
-      ),
-      superadmin_notifications: await this.dataSource.query(
-        'SELECT * FROM superadmin_notifications',
-      ),
+      organizations: await this.dataSource.getRepository(Organization).find(),
+      branches: await this.dataSource.getRepository(Branch).find(),
+      users: await this.dataSource
+        .getRepository(User)
+        .createQueryBuilder('u')
+        .addSelect('u.passwordHash')
+        .getMany(),
+      blocks: await this.dataSource.getRepository(Block).find(),
+      floors: await this.dataSource.getRepository(Floor).find(),
+      apartments: await this.dataSource.getRepository(Apartment).find(),
+      clients: await this.dataSource.getRepository(Client).find(),
+      contracts: await this.dataSource.getRepository(Contract).find(),
+      organization_payments: await this.dataSource
+        .getRepository(OrganizationPayment)
+        .find(),
+      superadmin_notifications: await this.dataSource
+        .getRepository(SuperadminNotification)
+        .find(),
     };
     return { v: 1, createdAt: new Date().toISOString(), tables };
   }
@@ -193,38 +207,28 @@ export class AdminBackupsService {
 
     const t = json.tables;
     const tx = async () => {
-      const insert = async (table: string) => {
-        const rows = (t[table] ?? []) as Record<string, unknown>[];
-        if (!rows.length) return;
-        const cols = Object.keys(rows[0] ?? {});
-        if (!cols.length) return;
-        for (const r of rows) {
-          const missing = cols.filter((c) => !(c in r));
-          if (missing.length) {
-            throw new BadRequestException(`Invalid rows in ${table}`);
-          }
-        }
-        const values: unknown[] = [];
-        const chunks = rows.map((r) => {
-          cols.forEach((c) => values.push((r as any)[c]));
-          return `(${cols.map((_c, i) => `$${values.length - cols.length + i + 1}`).join(',')})`;
-        });
-        await this.dataSource.query(
-          `INSERT INTO ${table} (${cols.join(',')}) VALUES ${chunks.join(',')}`,
-          values,
-        );
+      const insertMany = async <T>(
+        entity: { new (): T },
+        rows: unknown[],
+      ) => {
+        const list = (rows ?? []) as T[];
+        if (!list.length) return;
+        await this.dataSource.getRepository(entity).insert(list);
       };
 
-      await insert('organizations');
-      await insert('branches');
-      await insert('users');
-      await insert('blocks');
-      await insert('floors');
-      await insert('apartments');
-      await insert('clients');
-      await insert('contracts');
-      await insert('organization_payments');
-      await insert('superadmin_notifications');
+      await insertMany(Organization, t.organizations ?? []);
+      await insertMany(Branch, t.branches ?? []);
+      await insertMany(User, t.users ?? []);
+      await insertMany(Block, t.blocks ?? []);
+      await insertMany(Floor, t.floors ?? []);
+      await insertMany(Apartment, t.apartments ?? []);
+      await insertMany(Client, t.clients ?? []);
+      await insertMany(Contract, t.contracts ?? []);
+      await insertMany(OrganizationPayment, t.organization_payments ?? []);
+      await insertMany(
+        SuperadminNotification,
+        t.superadmin_notifications ?? [],
+      );
     };
 
     try {
