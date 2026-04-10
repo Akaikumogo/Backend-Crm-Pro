@@ -184,6 +184,10 @@ export class AdminBackupsService {
     if (clearAndWrite) {
       await this.dataSource.query('DROP SCHEMA public CASCADE');
       await this.dataSource.query('CREATE SCHEMA public');
+      // Needed for uuid primary keys default in Postgres
+      await this.dataSource.query(
+        'CREATE EXTENSION IF NOT EXISTS "uuid-ossp"',
+      );
       await this.dataSource.synchronize();
     }
 
