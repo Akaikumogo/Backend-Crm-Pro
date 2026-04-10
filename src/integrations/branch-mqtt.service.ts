@@ -4,6 +4,7 @@ import {
   OnModuleDestroy,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as mqtt from 'mqtt';
 import type { MqttClient } from 'mqtt';
@@ -24,6 +25,7 @@ export class BranchMqttService implements OnModuleDestroy {
     @InjectRepository(Branch)
     private readonly branches: Repository<Branch>,
     private readonly encryption: EncryptionService,
+    private readonly config: ConfigService,
   ) {}
 
   onModuleDestroy() {
@@ -36,12 +38,16 @@ export class BranchMqttService implements OnModuleDestroy {
 
   async publish(branchId: string, topic: string, data: string): Promise<void> {
     const branch = await this.branches.findOne({ where: { id: branchId } });
-    if (!branch?.mqttUrl) {
+    const fallbackUrl = this.config.get<string>('MQTT_URL')?.trim() || undefined;
+    if (!branch) {
+      throw new ServiceUnavailableException('Branch not found');
+    }
+    if (!branch.mqttUrl && !fallbackUrl) {
       throw new ServiceUnavailableException(
         'Branch has no MQTT URL configured',
       );
     }
-    const client = await this.getOrCreateClient(branch);
+    const client = await this.getOrCreateClient(branch, fallbackUrl);
     await new Promise<void>((resolve, reject) => {
       client.publish(topic, data, { qos: 1 }, (err) => {
         if (err) {
@@ -54,7 +60,10 @@ export class BranchMqttService implements OnModuleDestroy {
     this.scheduleIdleClose(branch.id);
   }
 
-  private async getOrCreateClient(branch: Branch): Promise<MqttClient> {
+  private async getOrCreateClient(
+    branch: Branch,
+    fallbackUrl?: string,
+  ): Promise<MqttClient> {
     const existing = this.cache.get(branch.id);
     if (existing) {
       existing.lastUsed = Date.now();
@@ -72,9 +81,15 @@ export class BranchMqttService implements OnModuleDestroy {
         throw new ServiceUnavailableException('MQTT credentials invalid');
       }
     }
-    const client = mqtt.connect(branch.mqttUrl!, {
-      username: branch.mqttUsername || undefined,
-      password,
+    const url = branch.mqttUrl?.trim() || fallbackUrl;
+    const username =
+      branch.mqttUsername?.trim() ||
+      this.config.get<string>('MQTT_USERNAME')?.trim() ||
+      undefined;
+    const envPass = this.config.get<string>('MQTT_PASSWORD')?.trim() || undefined;
+    const client = mqtt.connect(url!, {
+      ...(username && { username }),
+      ...((password || envPass) && { password: password || envPass }),
     });
     await new Promise<void>((resolve, reject) => {
       const t = setTimeout(

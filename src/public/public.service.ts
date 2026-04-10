@@ -164,13 +164,13 @@ export class PublicService {
     await this.access.ensurePublicBranch(dto.branchId);
     this.assertShowroomToken(showroomToken);
     const br = await this.branches.findOne({ where: { id: dto.branchId } });
-    if (!br?.code) {
+    const topic = br?.mqttTopic || process.env.MQTT_TOPIC;
+    if (!topic) {
       throw new BadRequestException('Branch has no mqttTopic configured');
     }
-    console.log(br);
     await this.branchMqtt.publish(
       dto.branchId,
-      br.code,
+      topic,
       String(dto.blockIndex + 1),
     );
     return { ok: true };
