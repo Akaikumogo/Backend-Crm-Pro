@@ -25,6 +25,7 @@ import { MqttModule } from './mqtt/mqtt.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { PublicModule } from './public/public.module';
 import { RealtimeModule } from './realtime/realtime.module';
+import { MigrationRunnerModule } from './migration-runner/migration-runner.module';
 import { SeedModule } from './seed/seed.module';
 import { UsersModule } from './users/users.module';
 import { Branch } from './entities/branch.entity';
@@ -50,6 +51,7 @@ import { Organization } from './entities/organization.entity';
       }),
       inject: [ConfigService],
     }),
+    MigrationRunnerModule,
     SeedModule,
     AuthModule,
     AccessModule,

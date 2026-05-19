@@ -12,7 +12,7 @@ export class AdminNotificationsService {
 
   findAll() {
     return this.notifications.find({
-      relations: { organization: true },
+      relations: { organization: true, requestedUser: true },
       order: { createdAt: 'DESC' },
       take: 500,
     });

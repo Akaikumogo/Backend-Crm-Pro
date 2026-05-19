@@ -5,13 +5,14 @@ import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Branch } from '../entities/branch.entity';
 import { Organization } from '../entities/organization.entity';
+import { SuperadminNotification } from '../entities/superadmin-notification.entity';
 import { User } from '../entities/user.entity';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, Organization, Branch]),
+    TypeOrmModule.forFeature([User, Organization, Branch, SuperadminNotification]),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],

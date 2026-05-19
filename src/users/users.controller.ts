@@ -24,6 +24,7 @@ import { UserRole } from '../user-role.enum';
 import { BulkDeleteUsersDto } from './dto/bulk-delete-users.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserPermissionsDto } from './dto/update-user-permissions.dto';
+import { AdminChangeUserPasswordDto } from './dto/admin-change-user-password.dto';
 import { UpdateUserScopeDto } from './dto/update-user-scope.dto';
 import { UsersService } from './users.service';
 
@@ -102,5 +103,17 @@ export class UsersController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.users.removeMany([id], user);
+  }
+
+  @Patch(':id/password')
+  @Roles(UserRole.SUPERADMIN, UserRole.ORG_ADMIN)
+  @RequirePermissions('workers.write')
+  @ApiOperation({ summary: 'Admin tomonidan foydalanuvchi parolini o\'zgartirish' })
+  adminChangePassword(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AdminChangeUserPasswordDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.users.adminChangePassword(id, dto.newPassword, user);
   }
 }

@@ -231,6 +231,27 @@ export class UsersService {
     });
   }
 
+  /** Superadmin yoki ORG_ADMIN istalgan foydalanuvchining parolini o'zgartiradi */
+  async adminChangePassword(id: string, newPassword: string, actor: JwtPayload) {
+    const target = await this.users.findOne({ where: { id } });
+    if (!target) {
+      throw new NotFoundException();
+    }
+    if (target.role === UserRole.SUPERADMIN) {
+      throw new BadRequestException('Superadmin parolini bu yo\'l bilan o\'zgartirib bo\'lmaydi');
+    }
+    if (actor.role === UserRole.ORG_ADMIN) {
+      if (target.organizationId !== actor.organizationId) {
+        throw new ForbiddenException();
+      }
+    } else if (actor.role !== UserRole.SUPERADMIN) {
+      throw new ForbiddenException();
+    }
+    target.passwordHash = await bcrypt.hash(newPassword, 10);
+    await this.users.save(target);
+    return { success: true };
+  }
+
   async updateScope(id: string, dto: UpdateUserScopeDto, actor: JwtPayload) {
     const target = await this.users.findOne({ where: { id } });
     if (!target) {
