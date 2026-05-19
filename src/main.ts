@@ -7,8 +7,19 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.getHttpAdapter().getInstance().disable('etag');
+  const rawOrigins = (process.env.CORS_ORIGIN ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  // Entries wrapped in /…/ are treated as regex patterns (e.g. /.*\.akaikumogo\.uz$/)
+  const originList: (string | RegExp)[] = rawOrigins.map((o) => {
+    const m = o.match(/^\/(.+)\/([gimsuy]*)$/);
+    return m ? new RegExp(m[1], m[2]) : o;
+  });
+
   app.enableCors({
-    origin: process.env.CORS_ORIGIN?.split(',').map((s) => s.trim()) ?? true,
+    origin: originList.length ? originList : true,
     credentials: true,
   });
   app.use((req: Request, res: Response, next: NextFunction) => {
