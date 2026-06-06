@@ -27,9 +27,13 @@ export class CloneApartmentsFromFloorDto {
   @IsUUID('4', { each: true })
   targetFloorIds!: string[];
 
-  @ApiProperty({ enum: CloneApartmentNumberMode })
+  @ApiProperty({
+    enum: CloneApartmentNumberMode,
+    default: CloneApartmentNumberMode.LEVEL_SHIFT,
+  })
+  @IsOptional()
   @IsEnum(CloneApartmentNumberMode)
-  numberMode!: CloneApartmentNumberMode;
+  numberMode?: CloneApartmentNumberMode;
 
   @ApiPropertyOptional({
     description:
@@ -44,7 +48,7 @@ export class CloneApartmentsFromFloorDto {
 
   @ApiPropertyOptional({
     description:
-      'true bo‘lsa, har bir target qavatning planImageUrl manbasi qavatnikiga yoziladi (hotspots ko‘chirilmaydi — kvartira IDlari mos kelmasligi mumkin)',
+      'true bo‘lsa, har bir target qavatga planImageUrl va apartmentId remap qilingan hotspots ko‘chiriladi',
   })
   @IsOptional()
   @IsBoolean()

@@ -25,6 +25,7 @@ import { Apartment } from '../entities/apartment.entity';
 import { BulkCreateApartmentsOnFloorDto } from './dto/bulk-create-apartments-on-floor.dto';
 import { BulkDeleteApartmentsDto } from './dto/bulk-delete-apartments.dto';
 import { ChangeApartmentStatusDto } from './dto/change-apartment-status.dto';
+import { CloneApartmentsFromFloorDto } from './dto/clone-apartments-from-floor.dto';
 import { CopyApartmentsFromFloorDto } from './dto/copy-apartments-from-floor.dto';
 import { CreateApartmentDto } from './dto/create-apartment.dto';
 import { UpdateApartmentDto } from './dto/update-apartment.dto';
@@ -86,6 +87,22 @@ export class ApartmentsController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.apartmentsService.copyFromFloor(dto, user);
+  }
+
+  @Post('clone-from-floor')
+  @RequirePermissions('apartments.write')
+  @ApiOperation({
+    summary:
+      'Showroom uchun: manba qavat detalini target qavatlarga ko‘chirish, xonadonlarni sotuvga tayyor holatda yaratish',
+  })
+  @ApiOkResponse({
+    description: 'created / skippedConflict / skippedNonNumeric',
+  })
+  cloneFromFloor(
+    @Body() dto: CloneApartmentsFromFloorDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.apartmentsService.cloneFromFloor(dto, user);
   }
 
   @Post('bulk-create-on-floor')

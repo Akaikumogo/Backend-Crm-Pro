@@ -11,6 +11,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '../auth/decorators/public.decorator';
 import { PublicBlockTriggerDto } from './dto/public-block-trigger.dto';
 import { PublicChangeApartmentStatusDto } from './dto/public-change-apartment-status.dto';
+import { PublicSetApartmentSaleStatusDto } from './dto/public-set-apartment-sale-status.dto';
 import { PublicService } from './public.service';
 
 @ApiTags('public')
@@ -56,6 +57,23 @@ export class PublicController {
       apartmentId,
       dto,
       showroomToken,
+    );
+  }
+
+  @Post('branch/:branchId/apartments/:apartmentId/sale-status')
+  @ApiOperation({
+    summary:
+      'Showroom: mark apartment sold / for sale without auth, client, or contract',
+  })
+  setApartmentSaleStatus(
+    @Param('branchId', ParseUUIDPipe) branchId: string,
+    @Param('apartmentId', ParseUUIDPipe) apartmentId: string,
+    @Body() dto: PublicSetApartmentSaleStatusDto,
+  ) {
+    return this.publicService.setApartmentSaleStatus(
+      branchId,
+      apartmentId,
+      dto,
     );
   }
 

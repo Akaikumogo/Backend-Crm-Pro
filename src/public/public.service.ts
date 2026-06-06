@@ -22,6 +22,7 @@ import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { BranchMqttService } from '../integrations/branch-mqtt.service';
 import { PublicBlockTriggerDto } from './dto/public-block-trigger.dto';
 import { PublicChangeApartmentStatusDto } from './dto/public-change-apartment-status.dto';
+import { PublicSetApartmentSaleStatusDto } from './dto/public-set-apartment-sale-status.dto';
 
 @Injectable()
 export class PublicService {
@@ -123,6 +124,30 @@ export class PublicService {
 
     apt.status = dto.status;
     apt.soldById = soldById;
+    const saved = await this.apartments.save(apt);
+    this.realtime.emitApartmentUpdated(branchId, {
+      apartmentId: saved.id,
+      status: saved.status,
+    });
+    return saved;
+  }
+
+  async setApartmentSaleStatus(
+    branchId: string,
+    apartmentId: string,
+    dto: PublicSetApartmentSaleStatusDto,
+  ) {
+    await this.access.ensurePublicBranch(branchId);
+    const apt = await this.apartments.findOne({
+      where: { id: apartmentId },
+      relations: { floor: { block: true } },
+    });
+    if (!apt || apt.floor.block.branchId !== branchId) {
+      throw new NotFoundException('Apartment not found');
+    }
+
+    apt.status = dto.status;
+    apt.soldById = null;
     const saved = await this.apartments.save(apt);
     this.realtime.emitApartmentUpdated(branchId, {
       apartmentId: saved.id,

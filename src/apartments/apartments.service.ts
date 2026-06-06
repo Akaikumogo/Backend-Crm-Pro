@@ -24,6 +24,10 @@ import { UserRole } from '../user-role.enum';
 import { BulkCreateApartmentsOnFloorDto } from './dto/bulk-create-apartments-on-floor.dto';
 import { BulkDeleteApartmentsDto } from './dto/bulk-delete-apartments.dto';
 import { ChangeApartmentStatusDto } from './dto/change-apartment-status.dto';
+import {
+  CloneApartmentNumberMode,
+  CloneApartmentsFromFloorDto,
+} from './dto/clone-apartments-from-floor.dto';
 import { CopyApartmentsFromFloorDto } from './dto/copy-apartments-from-floor.dto';
 import { CreateApartmentDto } from './dto/create-apartment.dto';
 import { UpdateApartmentDto } from './dto/update-apartment.dto';
@@ -408,6 +412,121 @@ export class ApartmentsService {
         });
       }
     }
+
+    return {
+      created,
+      skippedNonNumeric,
+      skippedConflict,
+      targetsProcessed: targets.length,
+      sourceApartments: sourceApts.length,
+    };
+  }
+
+  async cloneFromFloor(dto: CloneApartmentsFromFloorDto, user: JwtPayload) {
+    const shiftStep = dto.shiftStep ?? 100;
+    const source = await this.floors.findOne({
+      where: { id: dto.sourceFloorId },
+      relations: { block: true, apartments: true },
+    });
+    if (!source) {
+      throw new NotFoundException('Manba qavat topilmadi');
+    }
+    await this.access.assertBranchWrite(user, source.block.branchId);
+
+    const targetIds = [...new Set(dto.targetFloorIds)].filter(
+      (id) => id !== dto.sourceFloorId,
+    );
+    if (!targetIds.length) {
+      throw new BadRequestException(
+        'Kamida bitta boshqa qavat tanlang (manba o‘zi hisoblanmaydi)',
+      );
+    }
+
+    const targets = await this.floors.find({
+      where: { id: In(targetIds) },
+      relations: { block: true },
+    });
+    if (targets.length !== targetIds.length) {
+      throw new NotFoundException('Ba’zi qavatlar topilmadi');
+    }
+    for (const target of targets) {
+      if (target.blockId !== source.blockId) {
+        throw new BadRequestException(
+          'Barcha qavatlar manba bilan bir xil blokda bo‘lishi kerak',
+        );
+      }
+      await this.access.assertBranchWrite(user, target.block.branchId);
+    }
+
+    const sourceApts = sortApartmentsByNumber(source.apartments);
+    let created = 0;
+    let skippedNonNumeric = 0;
+    let skippedConflict = 0;
+
+    await this.apartments.manager.transaction(async (em) => {
+      const floorRepo = em.getRepository(Floor);
+      const aptRepo = em.getRepository(Apartment);
+
+      for (const target of targets.sort((a, b) => a.level - b.level)) {
+        const aptIdMap = new Map<string, string>();
+        const levelDelta = target.level - source.level;
+
+        for (const apt of sourceApts) {
+          const numberMode =
+            dto.numberMode ?? CloneApartmentNumberMode.LEVEL_SHIFT;
+          const transformed =
+            numberMode === CloneApartmentNumberMode.SAME
+              ? apt.number
+              : this.transformNumberForFloorCopy(
+                  apt.number,
+                  levelDelta,
+                  shiftStep,
+                );
+          if (!transformed) {
+            skippedNonNumeric += 1;
+            continue;
+          }
+
+          const exists = await aptRepo.exist({
+            where: { floorId: target.id, number: transformed },
+          });
+          if (exists) {
+            skippedConflict += 1;
+            continue;
+          }
+
+          const row = aptRepo.create({
+            floorId: target.id,
+            number: transformed,
+            status: ApartmentStatus.FOR_SALE,
+            areaSqm: apt.areaSqm,
+            rooms: apt.rooms,
+            priceTotal: apt.priceTotal,
+            pricePerSqm: apt.pricePerSqm,
+            imageUrl: apt.imageUrl,
+            soldById: null,
+          });
+          const saved = await aptRepo.save(row);
+          aptIdMap.set(apt.id, saved.id);
+          created += 1;
+          this.realtime.emitApartmentUpdated(target.block.branchId, {
+            apartmentId: saved.id,
+            status: saved.status,
+          });
+        }
+
+        if (dto.copyPlanFromSource) {
+          target.planImageUrl = source.planImageUrl;
+          target.hotspots = source.hotspots?.length
+            ? source.hotspots.map((h) => ({
+                ...h,
+                apartmentId: aptIdMap.get(h.apartmentId) ?? h.apartmentId,
+              }))
+            : source.hotspots;
+          await floorRepo.save(target);
+        }
+      }
+    });
 
     return {
       created,
