@@ -19,7 +19,8 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "db:reset-superadmin-only": "ts-node -r tsconfig-paths/register scripts/reset-db-superadmin-only.ts",
-    "showroom:prepare-floor": "ts-node -r tsconfig-paths/register scripts/prepare-showroom-floor.ts"
+    "showroom:prepare-floor": "ts-node -r tsconfig-paths/register scripts/prepare-showroom-floor.ts",
+    "showroom:seed-assets": "ts-node -r tsconfig-paths/register scripts/seed-showroom-assets.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
