@@ -1,0 +1,17 @@
+{
+  "v": 1,
+  "createdAt": "2026-06-06T21:10:42.710Z",
+  "reason": "pre-migration-auto-backup",
+  "tables": {
+    "organizations": [],
+    "branches": [],
+    "users": [],
+    "blocks": [],
+    "floors": [],
+    "apartments": [],
+    "clients": [],
+    "contracts": [],
+    "organization_payments": [],
+    "superadmin_notifications": []
+  }
+}
