@@ -1,0 +1,61 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-shoxsaroy}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_NAME: ${DB_NAME:-shoxsaroy}
+      DB_SYNC: "false"
+      DB_SSL: "false"
+      DB_POOL_MAX: ${DB_POOL_MAX:-20}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_SEC: ${JWT_EXPIRES_SEC:-604800}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL}
+      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD}
+      SUPPORT_PHONE: ${SUPPORT_PHONE}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_DIR: /app/logs
+      THROTTLE_TTL_SEC: ${THROTTLE_TTL_SEC:-60}
+      THROTTLE_LIMIT: ${THROTTLE_LIMIT:-120}
+      MQTT_URL: ${MQTT_URL}
+      MQTT_USERNAME: ${MQTT_USERNAME}
+      MQTT_PASSWORD: ${MQTT_PASSWORD}
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      - backend-logs:/app/logs
+      - backend-backups:/app/backups
+
+volumes:
+  postgres-data:
+  backend-logs:
+  backend-backups:
