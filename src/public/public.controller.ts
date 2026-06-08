@@ -12,6 +12,7 @@ import { Public } from '../auth/decorators/public.decorator';
 import { PublicBlockTriggerDto } from './dto/public-block-trigger.dto';
 import { PublicChangeApartmentStatusDto } from './dto/public-change-apartment-status.dto';
 import { PublicSetApartmentSaleStatusDto } from './dto/public-set-apartment-sale-status.dto';
+import { PublicShowroomMqttEventDto } from './dto/public-showroom-mqtt-event.dto';
 import { PublicService } from './public.service';
 
 @ApiTags('public')
@@ -99,6 +100,18 @@ export class PublicController {
       body.data,
       showroomToken,
     );
+  }
+
+  @Post('branch/:branchId/mqtt/showroom-event')
+  @ApiOperation({
+    summary:
+      'Showroom: publish selected block/floor/apartment full address to branch MQTT topic',
+  })
+  publishShowroomEvent(
+    @Param('branchId', ParseUUIDPipe) branchId: string,
+    @Body() dto: PublicShowroomMqttEventDto,
+  ) {
+    return this.publicService.publishShowroomEvent(branchId, dto);
   }
 
   @Post('mqtt/block-trigger')

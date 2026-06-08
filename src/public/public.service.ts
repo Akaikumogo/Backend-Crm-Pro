@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -23,9 +24,12 @@ import { BranchMqttService } from '../integrations/branch-mqtt.service';
 import { PublicBlockTriggerDto } from './dto/public-block-trigger.dto';
 import { PublicChangeApartmentStatusDto } from './dto/public-change-apartment-status.dto';
 import { PublicSetApartmentSaleStatusDto } from './dto/public-set-apartment-sale-status.dto';
+import { PublicShowroomMqttEventDto } from './dto/public-showroom-mqtt-event.dto';
 
 @Injectable()
 export class PublicService {
+  private readonly logger = new Logger(PublicService.name);
+
   constructor(
     @InjectRepository(Block)
     private readonly blocks: Repository<Block>,
@@ -129,6 +133,17 @@ export class PublicService {
       apartmentId: saved.id,
       status: saved.status,
     });
+    void this.publishShowroomEvent(branchId, {
+      event: 'apartment_sale_status',
+      apartmentId: saved.id,
+      status: saved.status as ApartmentStatus.SOLD | ApartmentStatus.FOR_SALE,
+    }).catch((err) => {
+      this.logger.warn(
+        `Showroom sale status MQTT publish failed: ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+    });
     return saved;
   }
 
@@ -182,6 +197,25 @@ export class PublicService {
     return { ok: true };
   }
 
+  async publishShowroomEvent(
+    branchId: string,
+    dto: PublicShowroomMqttEventDto,
+  ) {
+    await this.access.ensurePublicBranch(branchId);
+    const branch = await this.branches.findOne({ where: { id: branchId } });
+    const topic = branch?.mqttTopic || process.env.MQTT_TOPIC;
+    if (!branch) {
+      throw new NotFoundException('Branch not found');
+    }
+    if (!topic) {
+      throw new BadRequestException('Branch has no mqttTopic configured');
+    }
+
+    const payload = await this.buildShowroomMqttPayload(branch, dto);
+    await this.branchMqtt.publish(branchId, topic, JSON.stringify(payload));
+    return { ok: true, topic, payload };
+  }
+
   async publishBlockTrigger(
     dto: PublicBlockTriggerDto,
     showroomToken?: string,
@@ -199,5 +233,118 @@ export class PublicService {
       String(dto.blockIndex + 1),
     );
     return { ok: true };
+  }
+
+  private async buildShowroomMqttPayload(
+    branch: Branch,
+    dto: PublicShowroomMqttEventDto,
+  ) {
+    let block: Block | null = null;
+    let floor: Floor | null = null;
+    let apartment: Apartment | null = null;
+
+    if (dto.apartmentId) {
+      apartment = await this.apartments.findOne({
+        where: { id: dto.apartmentId },
+        relations: { floor: { block: true } },
+      });
+      if (!apartment || apartment.floor.block.branchId !== branch.id) {
+        throw new NotFoundException('Apartment not found');
+      }
+      floor = apartment.floor;
+      block = floor.block;
+    } else if (dto.floorId) {
+      floor = await this.floors.findOne({
+        where: { id: dto.floorId },
+        relations: { block: true },
+      });
+      if (!floor || floor.block.branchId !== branch.id) {
+        throw new NotFoundException('Floor not found');
+      }
+      block = floor.block;
+    } else if (dto.blockId) {
+      block = await this.blocks.findOne({
+        where: { id: dto.blockId, branchId: branch.id },
+      });
+      if (!block) {
+        throw new NotFoundException('Block not found');
+      }
+    }
+
+    if (dto.event === 'block_selected' && !block) {
+      throw new BadRequestException('blockId is required');
+    }
+    if (dto.event === 'floor_selected' && !floor) {
+      throw new BadRequestException('floorId is required');
+    }
+    if (
+      (dto.event === 'apartment_opened' ||
+        dto.event === 'apartment_sale_status') &&
+      !apartment
+    ) {
+      throw new BadRequestException('apartmentId is required');
+    }
+
+    const blockNumber = this.formatBlockNumber(block);
+    const floorLabel = floor ? `${floor.level}-etaj` : null;
+    const apartmentNumber = apartment?.number ?? null;
+    const apartmentLabel = apartmentNumber
+      ? `${apartmentNumber}-xonadon`
+      : null;
+    const fullAddress = [blockNumber ? `${blockNumber}-block` : null, floorLabel, apartmentLabel]
+      .filter(Boolean)
+      .join('/');
+
+    return {
+      event: dto.event,
+      timestamp: new Date().toISOString(),
+      branch: {
+        id: branch.id,
+        name: branch.name,
+        code: branch.code,
+      },
+      address: {
+        full: fullAddress,
+        block: blockNumber,
+        floor: floor?.level ?? null,
+        apartment: apartmentNumber,
+      },
+      block: block
+        ? {
+            id: block.id,
+            code: block.code,
+            name: block.name,
+            number: blockNumber,
+          }
+        : null,
+      floor: floor
+        ? {
+            id: floor.id,
+            level: floor.level,
+            name: floor.name,
+          }
+        : null,
+      apartment: apartment
+        ? {
+            id: apartment.id,
+            number: apartment.number,
+            status: dto.status ?? apartment.status,
+            rooms: apartment.rooms,
+            type: apartment.rooms ? `${apartment.rooms} xonali` : null,
+            areaSqm: apartment.areaSqm,
+          }
+        : null,
+    };
+  }
+
+  private formatBlockNumber(block: Block | null) {
+    if (!block) return null;
+    const fromName = block.name.match(/\d+/)?.[0];
+    if (fromName) return fromName;
+    const letter = block.code.trim().toUpperCase();
+    const alphabetIndex = letter.length === 1 ? letter.charCodeAt(0) - 64 : 0;
+    return alphabetIndex > 0 && alphabetIndex < 27
+      ? String(alphabetIndex)
+      : block.code;
   }
 }
