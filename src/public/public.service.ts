@@ -203,15 +203,16 @@ export class PublicService {
   ) {
     await this.access.ensurePublicBranch(branchId);
     const branch = await this.branches.findOne({ where: { id: branchId } });
-    const topic = branch?.mqttTopic || process.env.MQTT_TOPIC;
     if (!branch) {
       throw new NotFoundException('Branch not found');
     }
-    if (!topic) {
-      throw new BadRequestException('Branch has no mqttTopic configured');
-    }
 
     const payload = await this.buildShowroomMqttPayload(branch, dto);
+    const topic = await this.buildBranchTopic(branchId, {
+      blockNumber: payload.address.block,
+      floor: payload.address.floor,
+      apartmentNumber: payload.address.apartment,
+    });
     await this.branchMqtt.publish(branchId, topic, JSON.stringify(payload));
     return { ok: true, topic, payload };
   }
@@ -222,17 +223,83 @@ export class PublicService {
   ) {
     await this.access.ensurePublicBranch(dto.branchId);
     this.assertShowroomToken(showroomToken);
-    const br = await this.branches.findOne({ where: { id: dto.branchId } });
-    const topic = br?.mqttTopic || process.env.MQTT_TOPIC;
-    if (!topic) {
-      throw new BadRequestException('Branch has no mqttTopic configured');
+    const blocks = await this.blocks.find({
+      where: { branchId: dto.branchId },
+      order: { code: 'ASC' },
+    });
+    const block = blocks[dto.blockIndex];
+    if (!block) {
+      throw new NotFoundException('Block not found at index');
     }
+    const blockNumber = this.formatBlockNumber(block);
+    const topic = await this.buildBranchTopic(dto.branchId, {
+      blockNumber,
+    });
     await this.branchMqtt.publish(
       dto.branchId,
       topic,
       String(dto.blockIndex + 1),
     );
-    return { ok: true };
+    return { ok: true, topic };
+  }
+
+  private async buildBranchTopic(
+    branchId: string,
+    parts: {
+      blockNumber?: string | null;
+      floor?: number | null;
+      apartmentNumber?: string | null;
+    },
+  ): Promise<string> {
+    const widths = await this.getBranchPadWidths(branchId);
+    const segments: string[] = [];
+    if (parts.blockNumber != null) {
+      segments.push(this.padNumeric(parts.blockNumber, widths.block));
+    }
+    if (parts.floor != null) {
+      segments.push(this.padNumeric(parts.floor, widths.floor));
+    }
+    if (parts.apartmentNumber != null) {
+      segments.push(this.padNumeric(parts.apartmentNumber, widths.apartment));
+    }
+    return `${branchId}/${segments.join('')}`;
+  }
+
+  private async getBranchPadWidths(branchId: string) {
+    const blocks = await this.blocks.find({ where: { branchId } });
+    const floors = await this.floors
+      .createQueryBuilder('floor')
+      .innerJoin('floor.block', 'block')
+      .where('block.branchId = :branchId', { branchId })
+      .getMany();
+    const apartments = await this.apartments
+      .createQueryBuilder('apt')
+      .innerJoin('apt.floor', 'floor')
+      .innerJoin('floor.block', 'block')
+      .where('block.branchId = :branchId', { branchId })
+      .getMany();
+
+    const blockMax = blocks
+      .map((b) => Number(this.formatBlockNumber(b)))
+      .filter((n) => Number.isFinite(n))
+      .reduce((m, n) => Math.max(m, n), 0);
+    const floorMax = floors
+      .map((f) => f.level)
+      .reduce((m, n) => Math.max(m, n), 0);
+    const apartmentMax = apartments
+      .map((a) => Number(String(a.number).match(/\d+/)?.[0] ?? 0))
+      .reduce((m, n) => Math.max(m, n), 0);
+
+    return {
+      block: String(blockMax).length || 1,
+      floor: String(floorMax).length || 1,
+      apartment: String(apartmentMax).length || 1,
+    };
+  }
+
+  private padNumeric(value: string | number, width: number): string {
+    const raw = String(value).match(/\d+/)?.[0] ?? String(value);
+    return raw.padStart(width, '0');
   }
 
   private async buildShowroomMqttPayload(
