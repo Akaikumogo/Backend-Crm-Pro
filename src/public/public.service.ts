@@ -208,13 +208,14 @@ export class PublicService {
     }
 
     const payload = await this.buildShowroomMqttPayload(branch, dto);
-    const topic = await this.buildBranchTopic(branchId, {
+    const topic = this.buildBranchTopic(branchId);
+    const data = await this.buildAddressCode(branchId, {
       blockNumber: payload.address.block,
       floor: payload.address.floor,
       apartmentNumber: payload.address.apartment,
     });
-    await this.branchMqtt.publish(branchId, topic, JSON.stringify(payload));
-    return { ok: true, topic, payload };
+    await this.branchMqtt.publish(branchId, topic, data);
+    return { ok: true, topic, data, payload };
   }
 
   async publishBlockTrigger(
@@ -232,18 +233,17 @@ export class PublicService {
       throw new NotFoundException('Block not found at index');
     }
     const blockNumber = this.formatBlockNumber(block);
-    const topic = await this.buildBranchTopic(dto.branchId, {
-      blockNumber,
-    });
-    await this.branchMqtt.publish(
-      dto.branchId,
-      topic,
-      String(dto.blockIndex + 1),
-    );
-    return { ok: true, topic };
+    const topic = this.buildBranchTopic(dto.branchId);
+    const data = await this.buildAddressCode(dto.branchId, { blockNumber });
+    await this.branchMqtt.publish(dto.branchId, topic, data);
+    return { ok: true, topic, data };
   }
 
-  private async buildBranchTopic(
+  private buildBranchTopic(branchId: string): string {
+    return `${branchId}/data`;
+  }
+
+  private async buildAddressCode(
     branchId: string,
     parts: {
       blockNumber?: string | null;
@@ -262,7 +262,7 @@ export class PublicService {
     if (parts.apartmentNumber != null) {
       segments.push(this.padNumeric(parts.apartmentNumber, widths.apartment));
     }
-    return `${branchId}/${segments.join('')}`;
+    return segments.join('');
   }
 
   private async getBranchPadWidths(branchId: string) {
