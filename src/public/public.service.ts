@@ -259,8 +259,9 @@ export class PublicService {
     if (parts.floor != null) {
       segments.push(this.padNumeric(parts.floor, widths.floor));
     }
-    if (parts.apartmentNumber != null) {
-      segments.push(this.padNumeric(parts.apartmentNumber, widths.apartment));
+    if (parts.apartmentNumber != null && parts.floor != null) {
+      const unit = this.extractApartmentUnit(parts.apartmentNumber, parts.floor);
+      segments.push(this.padNumeric(unit, widths.unit));
     }
     return segments.join('');
   }
@@ -277,7 +278,9 @@ export class PublicService {
       .innerJoin('apt.floor', 'floor')
       .innerJoin('floor.block', 'block')
       .where('block.branchId = :branchId', { branchId })
+      .leftJoinAndSelect('apt.floor', 'aptFloor')
       .getMany();
+    const floorLevelById = new Map(floors.map((f) => [f.id, f.level]));
 
     const blockMax = blocks
       .map((b) => Number(this.formatBlockNumber(b)))
@@ -286,15 +289,34 @@ export class PublicService {
     const floorMax = floors
       .map((f) => f.level)
       .reduce((m, n) => Math.max(m, n), 0);
-    const apartmentMax = apartments
-      .map((a) => Number(String(a.number).match(/\d+/)?.[0] ?? 0))
+    const unitMax = apartments
+      .map((a) => {
+        const level = floorLevelById.get(a.floorId) ?? null;
+        return Number(this.extractApartmentUnit(a.number, level));
+      })
+      .filter((n) => Number.isFinite(n))
       .reduce((m, n) => Math.max(m, n), 0);
 
     return {
       block: String(blockMax).length || 1,
       floor: String(floorMax).length || 1,
-      apartment: String(apartmentMax).length || 1,
+      unit: String(unitMax).length || 1,
     };
+  }
+
+  private extractApartmentUnit(
+    apartmentNumber: string,
+    floor: number | null,
+  ): string {
+    const digits = String(apartmentNumber).match(/\d+/)?.[0] ?? '';
+    if (!digits) return '';
+    if (floor != null) {
+      const floorStr = String(floor);
+      if (digits.startsWith(floorStr) && digits.length > floorStr.length) {
+        return digits.slice(floorStr.length);
+      }
+    }
+    return digits;
   }
 
   private padNumeric(value: string | number, width: number): string {
