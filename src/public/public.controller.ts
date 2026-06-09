@@ -114,6 +114,18 @@ export class PublicController {
     return this.publicService.publishShowroomEvent(branchId, dto);
   }
 
+  @Post('branch/:branchId/mqtt/code')
+  @ApiOperation({
+    summary:
+      'Showroom: publish a raw code (random/power on/power off) to branch {branchId}/data topic',
+  })
+  publishCode(
+    @Param('branchId', ParseUUIDPipe) branchId: string,
+    @Body() body: { code: string },
+  ) {
+    return this.publicService.publishCode(branchId, body?.code);
+  }
+
   @Post('mqtt/block-trigger')
   @ApiOperation({
     summary: 'Showroom: publish block index to branch mqttTopic',

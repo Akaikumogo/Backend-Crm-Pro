@@ -218,6 +218,21 @@ export class PublicService {
     return { ok: true, topic, data, payload };
   }
 
+  async publishCode(branchId: string, code: string) {
+    await this.access.ensurePublicBranch(branchId);
+    const branch = await this.branches.findOne({ where: { id: branchId } });
+    if (!branch) {
+      throw new NotFoundException('Branch not found');
+    }
+    const data = String(code ?? '').trim();
+    if (!data) {
+      throw new BadRequestException('code is required');
+    }
+    const topic = this.buildBranchTopic(branchId);
+    await this.branchMqtt.publish(branchId, topic, data);
+    return { ok: true, topic, data };
+  }
+
   async publishBlockTrigger(
     dto: PublicBlockTriggerDto,
     showroomToken?: string,
